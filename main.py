@@ -6,10 +6,12 @@ from googlesearch import search
 from bs4 import BeautifulSoup
 import argparse
 import ssl
+from collections import defaultdict
+
 ssl.match_hostname = lambda cert, hostname: True
 
 def search_keyword(args):
-    return search(args.keyword, tld="com", num=10, stop=10, pause=0, user_agent=args.user_agent, country="country" + args.country)
+    return search(args.keyword, tld="com", num=args.results, stop=args.results, pause=0, user_agent=args.user_agent, country="country" + args.country)
     
 def extract_domain_from_url(url):
     url_base = urlparse(url).netloc
@@ -18,23 +20,32 @@ def extract_domain_from_url(url):
     else:
         return url_base
 
-def find_external_links(url, domain, user_agent):
-    external_links = []
+def find_external_links(url, user_agent):
+    base_domain = extract_domain_from_url(url)
+    external_links = defaultdict(list)
     try:
         request = Request(url, headers={'User-Agent': user_agent})
         html = urlopen(request).read()
     except:
         print("Error accessing url:%s" % url)
-        return []
+        return external_links
 
     soup = BeautifulSoup(html, features="html.parser")
     links = soup.find_all('a')
     for tag in links:
         link = tag.get('href',None)
         if link is not None:
-            external_links.append(link)
-    return filter_external_links(external_links, domain)
+            external_domain = extract_domain_from_url(link)
+            if should_add_link(link, base_domain, external_domain):
+                external_links[external_domain].append(link)
+    return external_links
 
+
+def should_add_link(url, base_domain, external_domain):
+    if url.startswith("http") and not external_domain.endswith(base_domain):
+        return True
+    return False
+    
 def filter_external_links(urls, domain):
     external_links = []
 
@@ -44,67 +55,69 @@ def filter_external_links(urls, domain):
             external_links.append(url)
     return external_links
 
-def print_results(external_links, link_flag):
-    for domain, links in external_links.items():
-        print(domain, len(links))
-        if link_flag:
-            for link in links:
-                try:
-                    print(link)
-                except:
-                    print("hello")
-                    pass #some urls contain non printable characters, we skip printing them
-
-if __name__ == "__main__":
-    # Create the parser
+def print_results(results, args):
+    if len(results.keys()) == 0:
+        print("Nothing found :/")
+    for url, domains in results.items():
+        link_count = sum([len(domain) for domain in domains.values()])
+        domain_count = len(domains.keys())
+        print("URL:{:<50s} DOMAIN COUNT:{:<20d} LINK_COUNT:{:<20d}".format(url, domain_count, link_count))  
+        if args.print_domains:
+            for domain, external_links in domains.items():
+                print("DOMAIN:{:<50s} LINK_COUNT: {:<20d}".format(domain, len(external_links)))
+                
+        elif args.print_all:
+            for domain, external_links in domains.items():
+                print("DOMAIN:{:<50s} LINK_COUNT: {:<20d}".format(domain, len(external_links)))
+                print(*external_links, sep='\n')
+            
+def configure_argument_parser():
     argument_parser = argparse.ArgumentParser(description='Return external link count of given keys google search result urls')
-
-# Add the arguments
     argument_parser.add_argument('keyword', 
             metavar='keyword', 
             type=str,
             help='search keyword')
 
-    argument_parser.add_argument('--domain',
-            metavar='domain_count',
+    argument_parser.add_argument('--results',
+            metavar='results',
             type=int,
-            choices=range(1,6),
+            choices=range(1,20),
             default=2,
-            help='unique domain count to be returned')
+            help='number of results to be returned')
 
     argument_parser.add_argument('--country',
             metavar='country_code',
             type=str,
             default="TR",
             help='two character country code')
-    
+
     argument_parser.add_argument('--user-agent',
             metavar='user_agent',
             type=str,
             default="Mozilla/5.0 (Linux; Android 7.0; SM-G610M Build/NRD90M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.87 Mobile Safari/537.36",
             help='http user agent string')
 
-    argument_parser.add_argument("--print-links", 
+    argument_parser.add_argument("--print-domains", 
             help="print links with counts", 
             action = "store_true")
 
+    argument_parser.add_argument("--print-all", 
+            help="print full tree", 
+            action = "store_true")
+    return argument_parser
+
+if __name__ == "__main__":
+    
+    argument_parser = configure_argument_parser()
     args = argument_parser.parse_args()
 
     response = search_keyword(args)
 
-    domains = {}
-    for result in response:
-        domain = extract_domain_from_url(result)
-        if domain not in domains:
-            domains[domain] = result
-        if len(domains.keys()) >= args.domain:
-            break
-    
-    external_links = {}
-    for domain, url in domains.items():
-        external_links_of_domain = find_external_links(url, domain, args.user_agent)
-        external_links[domain] = external_links_of_domain
-    
-    print_results(external_links, args.print_links)
+    results = {}
+    for url in response:
+        external_links_of_url = find_external_links(url, args.user_agent)
+        results[url] = external_links_of_url
+    print_results(results, args)
+
 
 
