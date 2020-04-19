@@ -45,15 +45,6 @@ def should_add_link(url, base_domain, external_domain):
     if url.startswith("http") and not external_domain.endswith(base_domain):
         return True
     return False
-    
-def filter_external_links(urls, domain):
-    external_links = []
-
-    for url in urls:
-        extracted_domain = extract_domain_from_url(url)
-        if url.startswith("http") and not extracted_domain.endswith(domain):
-            external_links.append(url)
-    return external_links
 
 def print_results(results, args):
     if len(results.keys()) == 0:
