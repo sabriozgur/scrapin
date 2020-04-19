@@ -2,7 +2,7 @@
 
 Usage: python3 main.py --help
 
-Domain parameter might not return requested amount of entry due to result containing less urls
+Query might not return not return requested amount of entry due to results containing less urls
 
 Example commands for reference:
 
